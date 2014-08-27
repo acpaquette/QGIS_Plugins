@@ -15,7 +15,7 @@ description=USGS Astrogeology Processing on the Web
 version=0.1
 author=Jay Laura
 email=jlaura@usgs.gov
-
+category=vector
 # end of mandatory metadata
 
 # Optional items:
