@@ -26,15 +26,18 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QAction, QMenu
 from qgis.core import *
 
-from functools import partial
 import sys
 import qgis.utils
 import gdal
 import numpy as np
+
+from functools import partial
 from plio.io.io_gdal import array_to_raster
-from plio.io.io_moon_minerology_mapper import open
+from plio.io.io_moon_minerology_mapper import open as m3_open
+from plio.io.io_crism import open as crism_open
 from plio.io import io_moon_minerology_mapper as iomm
 from libpysat.derived.m3 import pipe, supplemental, ip, new
+from libpysat.derived.crism import crism_algs
 from unittest import mock
 from . import crism_wv
 from .m3_wv import m3_wv
@@ -44,24 +47,15 @@ from .m3_wv import m3_wv
 from .resources import *
 # Import the code for the dialog
 from .pysat_dialog import PysatDialog
-import os.path
+import os
+from pathlib import Path
 
+# Grabs the home directory by default
+home = str(Path.home())
+
+# Allows user to set outpath
 PysatDialog.M3_outpath = sys.modules[__name__]
-PysatDialog.CRISM_outpath = sys.modules[__name__]
-PysatDialog.M3_outpath = ' '
-PysatDialog.CRISM_outpath = ' '
-
-def m3_img():
-    m3 = mock.Mock(spec=iomm.M3)
-
-    def create(m):
-        ndim = len(m[0])
-        return np.arange(1,(9*ndim+1)).reshape(-1,3,3)
-    m3.loc.__getitem__ = mock.MagicMock(side_effect=create)
-
-    wv = np.asarray(list(m3_wv.values()))
-    type(m3).wavelengths = mock.PropertyMock(return_value=wv)
-    return m3
+PysatDialog.img_outpath = home
 
 class Pysat:
     """QGIS Plugin Implementation."""
@@ -217,7 +211,7 @@ class Pysat:
         self.menu.insertMenu( lastAction, self.crism_menu )
 
         self.action = QAction(QIcon(self.icon_path),"Setup Outpath", self.iface.mainWindow())
-        self.action.triggered.connect(self.run_three)
+        self.action.triggered.connect(self.setup_outpath)
         self.menu.addAction( self.action )
 
         # Menus for M3 menu
@@ -236,37 +230,8 @@ class Pysat:
         self.build_menus(ip, self.m3_ip_functions)
 
         # Adds actions to crism
-        # self.build_menus(ip, self.m3_ip_functions)
-
-
-    def crism_img():
-        crism = mock.Mock(spec=icsm.Crism)
-
-        def create(m):
-            ndim = len(m[0])
-            return np.arange(1,(9*ndim+1)).reshape(-1, 3, 3)
-
-        def create_dense(_):
-            return np.arange(1, 4402).reshape(489, 3, 3)
-
-        crism.iloc.__getitem__ = mock.MagicMock(side_effect=create)
-        crism.__getitem__ = mock.MagicMock(side_effect=create_dense)
-        wv = np.asarray(list(crism_wv.values()))
-        type(crism).wavelengths = mock.PropertyMock(return_value=wv)
-
-        return crism
-
-    def m3_img():
-        m3 = mock.Mock(spec=iomm.M3)
-
-        def create(m):
-            ndim = len(m[0])
-            return np.arange(1,(9*ndim+1)).reshape(-1,3,3)
-        m3.loc.__getitem__ = mock.MagicMock(side_effect=create)
-
-        wv = np.asarray(list(m3_wv.values()))
-        type(m3).wavelengths = mock.PropertyMock(return_value=wv)
-        return m3
+        # TODO: Build Menus for CRISM algorithms
+        self.build_menus(crism_algs, self.crism_menu)
 
     def unload(self):
         """Removes the plugin menu item and icon from QGIS GUI."""
@@ -278,26 +243,7 @@ class Pysat:
         # remove the toolbar
         del self.toolbar
 
-    def run_alg(self, function):
-        """Run method that performs all the real work"""
-        # Gets the current layer
-        layer = self.iface.activeLayer()
-        layer_path = layer.dataProvider().dataSourceUri()
-
-        # Opens the image using plio for reading
-        m3_img = open(layer_path)
-
-        # Applies the algorithm specified
-        modified_img = function(m3_img)
-
-        # Writes the tiff to the user specified location
-        img_tiff = array_to_raster(modified_img, PysatDialog.M3_outpath + 'temp.tiff', bittype='GDT_Float32')
-
-        # Grabs the new tiff and adds it into QGIS
-        self.iface.addRasterLayer(PysatDialog.M3_outpath + 'temp.tiff', "Temp Layer")
-        return 0
-
-    def build_menus(self, module, menu_name):
+    def build_menus(self, module, menu_name, package=None):
         """
         Parameters
         ----------
@@ -312,47 +258,52 @@ class Pysat:
          : tiff image
         """
         # Grabs all functions in a module
-        package_funcs = inspect.getmembers(module)
-
-        # Makes a readable img
-        img_tiff = m3_img()
+        package_funcs = inspect.getmembers(module, inspect.isfunction)
 
         not_called = []
         for function in package_funcs:
-            # If a callable function, call it with the img specified above
-            if callable(function[1]) and not function[0].endswith('__'):
-                try:
-                    function[1](img_tiff)
-                except:
-                    not_called.append(function[0])
-                    continue
+            self.action = QAction(QIcon(self.icon_path), str(function[0]), menu_name)
+            self.action.triggered.connect(partial(self.run_algorithm, module, str(function[0])))
+            menu_name.addAction( self.action )
 
-                if function[0] not in not_called and function[0] != 'warn_m3':
-                    self.action = QAction(QIcon(self.icon_path), str(function[0]), menu_name)
-                    self.action.triggered.connect(partial(self.run_two, module, str(function[0])))
-                    menu_name.addAction( self.action )
-
-    def run_two(self, module, func=None):
+    def run_algorithm(self, module, func=None):
         """Run method that performs all the real work"""
 
         # Gets the current layer
         layer = self.iface.activeLayer()
         layer_path = layer.dataProvider().dataSourceUri()
 
-        # Opens the image using plio for reading
-        m3_img = open(layer_path)
+        if module == crism_algs:
+            img = crism_open(layer_path)
+
+        else:
+            # Opens the image using plio for reading
+            img = m3_open(layer_path)
 
         # Applies the algorithm specified
-        modified_img = getattr(module, str(func))(m3_img)
+        modified_img = getattr(module, str(func))(img)
 
-        # Writes the tiff to the user specified location
-        img_tiff = array_to_raster(modified_img, PysatDialog.M3_outpath + 'temp.tiff', bittype='GDT_Float32')
+        # Stores the name of the image file
+        new_filename = (str(func) + '_' + str(layer_path.split('/')[-1].split('.')[0]) + '.tif')
+
+        # Creates the new filepath for the image
+        new_filepath = os.path.join(str(PysatDialog.img_outpath), new_filename)
+
+        try:
+            img.spatial_reference
+            img_tiff = array_to_raster(modified_img, new_filepath, bittype='GDT_Float32',
+                                       geotransform=img.geotransform, projection=img.spatial_reference)
+        except:
+            # Writes the tiff to the user specified location
+            img_tiff = array_to_raster(modified_img, new_filepath, bittype='GDT_Float32',
+                                       geotransform=img.geotransform)
 
         # Grabs the new tiff and adds it into QGIS
-        self.iface.addRasterLayer(PysatDialog.M3_outpath + 'temp.tiff', "Temp Layer")
+        self.iface.addRasterLayer(new_filepath, new_filename)
+
         return 0
 
-    def run_three(self):
+    def setup_outpath(self):
         """Run method that performs all the real work"""
         # show the dialog
         layers = [layer for layer in QgsProject.instance().mapLayers().values()]
@@ -364,7 +315,6 @@ class Pysat:
         # See if OK was pressed
         if result:
             outpath = self.dlg.lineEdit.text()
-            PysatDialog.M3_outpath = outpath
-            PysatDialog.CRISM_outpath = outpath
+            PysatDialog.img_outpath = outpath
 
         return None
