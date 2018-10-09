@@ -1,7 +1,7 @@
 Plugin Builder Results
 
-Your plugin Pysat was created in:
-    /home/tthatcher/.local/share/QGIS/QGIS3/profiles/default/python/plugins/pysat
+Your plugin Pyhat was created in:
+    /home/tthatcher/.local/share/QGIS/QGIS3/profiles/default/python/plugins/pyhat
 
 Your QGIS plugin directory is located at:
     /home/tthatcher/.local/share/QGIS/QGIS3/profiles/default/python/plugins
@@ -17,11 +17,11 @@ What's Next:
 
   * Test the plugin by enabling it in the QGIS plugin manager
 
-  * Customize it by editing the implementation file: ``pysat.py``
+  * Customize it by editing the implementation file: ``pyhat.py``
 
   * Create your own custom icon, replacing the default icon.png
 
-  * Modify your user interface by opening Pysat.ui in Qt Designer
+  * Modify your user interface by opening Pyhat.ui in Qt Designer
 
   * You can use the Makefile to compile your Ui and resource files when
     you make changes. This requires GNU make (gmake)

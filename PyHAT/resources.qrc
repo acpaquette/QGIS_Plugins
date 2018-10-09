@@ -1,5 +1,5 @@
 <RCC>
-    <qresource prefix="/plugins/pysat" >
+    <qresource prefix="/plugins/pyhat" >
         <file>icon.png</file>
     </qresource>
 </RCC>

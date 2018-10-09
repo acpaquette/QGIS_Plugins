@@ -1,7 +1,7 @@
 #/***************************************************************************
-# Pysat
+# Pyhat
 #
-# Uses PySAT algorithms to allow application of these algorithms through QGIS
+# Uses PyHAT algorithms to allow application of these algorithms through QGIS
 #							 -------------------
 #		begin				: 2018-07-11
 #		git sha				: $Format:%H$
@@ -38,15 +38,15 @@ LOCALES =
 # translation
 SOURCES = \
 	__init__.py \
-	pysat.py pysat_dialog.py
+	pyhat.py pyhat_dialog.py
 
-PLUGINNAME = pysat
+PLUGINNAME = pyhat
 
 PY_FILES = \
 	__init__.py \
-	pysat.py pysat_dialog.py
+	pyhat.py pyhat_dialog.py
 
-UI_FILES = pysat_dialog_base.ui
+UI_FILES = pyhat_dialog_base.ui
 
 EXTRAS = metadata.txt icon.png
 
